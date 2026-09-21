@@ -81,6 +81,7 @@ Usage:
   hivemind cursor  install | uninstall
   hivemind hermes  install | uninstall
   hivemind claude_cowork install | uninstall
+  hivemind kiro    install | uninstall
   hivemind pi      install | uninstall
       Install or remove hivemind for a specific assistant.
 
@@ -366,7 +367,7 @@ async function runInstallAll(args: string[]): Promise<void> {
 
   if (targets.length === 0) {
     log("No supported assistants detected.");
-    log("Supported: Claude Code, Codex, OpenClaw, Cursor, Hermes Agent, Pi, Claude Cowork.");
+    log("Supported: Claude Code, Codex, OpenClaw, Cursor, Hermes Agent, Pi, Claude Cowork, Kiro.");
     log("Install one and rerun `hivemind install`, or target a specific assistant: `hivemind cursor install`.");
     return;
   }
