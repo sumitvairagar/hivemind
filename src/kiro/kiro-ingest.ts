@@ -29,6 +29,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   utimesSync,
@@ -125,15 +126,25 @@ function loadState(): IngestState {
   try {
     const raw = JSON.parse(readFileSync(STATE_PATH, "utf-8"));
     if (raw && typeof raw === "object" && raw.processedLines) return raw as IngestState;
-  } catch {
-    /* fresh state */
+    // File exists but has invalid shape — do not reset to empty watermark,
+    // which would replay every transcript from line zero and create duplicates.
+    // Return null to signal a bad state; callers skip ingestion for this tick.
+  } catch (e: unknown) {
+    // Missing file is the only acceptable reason to start fresh.
+    if ((e as { code?: string }).code === "ENOENT") return { processedLines: {} };
+    // Any other error (partial write, permission issue) — fail closed.
   }
-  return { processedLines: {} };
+  return null as unknown as IngestState; // signals "do not ingest this tick"
 }
 
 function saveState(state: IngestState): void {
   mkdirSync(DEEPLAKE_DIR, { recursive: true });
-  writeFileSync(STATE_PATH, JSON.stringify(state));
+  // Atomic write: write to a temp file first, then rename into place.
+  // A rename is atomic on every OS — the reader always sees either the old
+  // complete state or the new complete state, never a half-written file.
+  const tmp = `${STATE_PATH}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state));
+  renameSync(tmp, STATE_PATH);
 }
 
 function recordLoss(detail: Record<string, unknown>): void {
@@ -267,6 +278,12 @@ export function entriesForLine(
     for (const b of blocks) {
       if (isBlock(b) && b.kind === "toolUse") {
         const tb = b as KiroToolUseBlock;
+        // Validate required fields before dereferencing — a malformed block
+        // without .data would throw and block all subsequent transcript lines.
+        if (!tb.data || typeof tb.data.name !== "string" || typeof tb.data.toolUseId !== "string") {
+          log("kiro-ingest", `skipping malformed toolUse block (missing data/name/toolUseId)`);
+          continue;
+        }
         out.push({
           id: crypto.randomUUID(),
           ...base,
@@ -284,6 +301,11 @@ export function entriesForLine(
     for (const b of blocks) {
       if (isBlock(b) && b.kind === "toolResult") {
         const rb = b as KiroToolResultBlock;
+        // Same: validate before dereferencing.
+        if (!rb.data || typeof rb.data.toolUseId !== "string") {
+          log("kiro-ingest", `skipping malformed toolResult block (missing data/toolUseId)`);
+          continue;
+        }
         out.push({
           id: crypto.randomUUID(),
           ...base,
@@ -338,16 +360,24 @@ export function summarizeIdleSessions(
   const doSpawn: SpawnSummaryFn =
     spawn ??
     ((sessionId) => {
+      // Track whether at least one task started successfully. If both fail,
+      // throw so the caller does not advance summarizedLines — the session
+      // will be retried on the next idle tick rather than being silently
+      // marked as summarized with no summary written.
+      let anyStarted = false;
       try {
         spawnWikiWorker({ config, sessionId, cwd: `/${KIRO_PROJECT}`, bundleDir, reason: "KiroIdle", agent: KIRO_AGENT });
+        anyStarted = true;
       } catch (e: unknown) {
         log("kiro-ingest", `summary spawn skipped for ${sessionId}: ${e instanceof Error ? e.message : String(e)}`);
       }
       try {
         forceSessionEndTrigger({ config, cwd: `/${KIRO_PROJECT}`, bundleDir, agent: KIRO_AGENT, sessionId });
+        anyStarted = true;
       } catch (e: unknown) {
         log("kiro-ingest", `skillify trigger skipped for ${sessionId}: ${e instanceof Error ? e.message : String(e)}`);
       }
+      if (!anyStarted) throw new Error(`all end-of-session tasks failed for ${sessionId}`);
     });
   state.summarizedLines ??= {};
 
@@ -401,6 +431,7 @@ export async function ingestKiroSessions(): Promise<{ ingested: number } | { ski
     );
 
     const state = loadState();
+    if (!state) return { skipped: "invalid-state" };
     let transcripts: string[];
     try {
       transcripts = readdirSync(KIRO_SESSIONS_DIR)
@@ -427,12 +458,19 @@ export async function ingestKiroSessions(): Promise<{ ingested: number } | { ski
       const sessionId = basename(path).replace(/\.jsonl$/, "");
 
       let processed = already;
-      for (const raw of lines.slice(already)) {
+      const newLines = lines.slice(already);
+      for (let i = 0; i < newLines.length; i++) {
+        const raw = newLines[i]!;
         let parsed: KiroLine;
         try {
           parsed = JSON.parse(raw);
         } catch {
-          processed += 1;
+          // A parse failure on the final line means Kiro is still writing it
+          // (the line is unterminated). Leave the watermark here so the next
+          // tick retries it once the write is complete.
+          // A parse failure on any earlier line is a corrupt record — skip it.
+          const isLastLine = i === newLines.length - 1;
+          if (!isLastLine) processed += 1;
           continue;
         }
 

@@ -36,7 +36,9 @@ function readConfig(): McpConfig {
       `mcp.json at ${CONFIG_PATH} is not valid JSON. Fix or remove it, then rerun.`,
     );
   }
-  return parsed && typeof parsed === "object" ? (parsed as McpConfig) : {};
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as McpConfig)
+    : {};
 }
 
 function writeConfig(cfg: McpConfig): void {
@@ -52,7 +54,7 @@ export function installKiro(): void {
   //    Non-destructive merge: preserve any servers the user already added.
   const cfg = readConfig();
   const servers =
-    cfg.mcpServers && typeof cfg.mcpServers === "object"
+    cfg.mcpServers && typeof cfg.mcpServers === "object" && !Array.isArray(cfg.mcpServers)
       ? (cfg.mcpServers as Record<string, unknown>)
       : {};
   servers[SERVER_KEY] = buildMcpServerEntry();
