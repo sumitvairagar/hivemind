@@ -172,7 +172,7 @@ export function readVersionStamp(dir: string): string | null {
   try { return readFileSync(p, "utf-8").trim(); } catch { return null; }
 }
 
-export type PlatformId = "claude" | "codex" | "claw" | "cursor" | "hermes" | "pi" | "claude_cowork";
+export type PlatformId = "claude" | "codex" | "claw" | "cursor" | "hermes" | "pi" | "claude_cowork" | "kiro";
 
 export interface DetectedPlatform {
   id: PlatformId;
@@ -211,6 +211,9 @@ const PLATFORM_MARKERS: DetectedPlatform[] = [
   // claude_desktop_config.json (recall-only; capture is the desktop app's
   // own concern). Marker is the OS-specific Claude Desktop config dir.
   { id: "claude_cowork", markerDir: claudeDesktopConfigDir() },
+  // kiro — AWS's AI coding agent (kiro-cli). Sessions written to
+  // ~/.kiro/sessions/cli/<uuid>.jsonl. MCP config at ~/.kiro/settings/mcp.json.
+  { id: "kiro", markerDir: join(HOME, ".kiro") },
 ];
 
 export function detectPlatforms(): DetectedPlatform[] {

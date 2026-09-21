@@ -4,6 +4,7 @@ import { installOpenclaw, uninstallOpenclaw } from "./install-openclaw.js";
 import { installCursor, uninstallCursor } from "./install-cursor.js";
 import { installHermes, uninstallHermes } from "./install-hermes.js";
 import { installCowork, uninstallCowork } from "./install-cowork.js";
+import { installKiro, uninstallKiro } from "./install-kiro.js";
 import { installPi, uninstallPi } from "./install-pi.js";
 import {
   disableEmbeddings,
@@ -460,6 +461,7 @@ function runSingleInstall(id: PlatformId): void {
     else if (id === "hermes") installHermes();
     else if (id === "pi") installPi();
     else if (id === "claude_cowork") installCowork();
+    else if (id === "kiro") installKiro();
   } catch (err) {
     warn(`  ${id.padEnd(14)} FAILED: ${(err as Error).message}`);
   }
@@ -474,6 +476,7 @@ function runSingleUninstall(id: PlatformId): void {
     else if (id === "hermes") uninstallHermes();
     else if (id === "pi") uninstallPi();
     else if (id === "claude_cowork") uninstallCowork();
+    else if (id === "kiro") uninstallKiro();
   } catch (err) {
     warn(`  ${id.padEnd(14)} FAILED: ${(err as Error).message}`);
   }
@@ -616,7 +619,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const platformCmds: PlatformId[] = ["claude", "codex", "claw", "cursor", "hermes", "pi", "claude_cowork"];
+  const platformCmds: PlatformId[] = ["claude", "codex", "claw", "cursor", "hermes", "pi", "claude_cowork", "kiro"];
   if (platformCmds.includes(cmd as PlatformId)) {
     const sub = args[1];
     if (sub === "install") {

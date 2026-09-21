@@ -27,6 +27,7 @@ import { deriveProjectKey } from "../utils/repo-identity.js";
 import { makeQueryEmbedder } from "../docs/embed.js";
 import { getVersion } from "../cli/version.js";
 import { startCoworkIngestLoop, coworkDataNoticeOnce } from "./cowork-ingest.js";
+import { startKiroIngestLoop } from "../kiro/kiro-ingest.js";
 
 interface ServerContext {
   api: DeeplakeApi;
@@ -241,6 +242,9 @@ async function main(): Promise<void> {
   // to the sessions table so Cowork conversations become shared memory too.
   // Best-effort and self-throttling; never touches the stdio channel.
   startCoworkIngestLoop();
+  // Kiro CLI has no capture hooks either — tail ~/.kiro/sessions/cli/*.jsonl
+  // and write new messages into shared memory, same as Cowork.
+  startKiroIngestLoop();
 }
 
 main().catch((err) => {
