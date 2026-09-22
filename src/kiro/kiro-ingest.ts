@@ -122,6 +122,14 @@ export interface KiroLine {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Load persisted watermark state from disk.
+ *
+ * Returns `{ processedLines: {} }` when no state file exists yet (first run).
+ * Returns `null` — signalling "skip ingestion this tick" — when the file
+ * exists but cannot be parsed or has an unexpected shape, so callers never
+ * reset watermarks to zero and accidentally replay already-ingested lines.
+ */
 function loadState(): IngestState {
   try {
     const raw = JSON.parse(readFileSync(STATE_PATH, "utf-8"));
@@ -137,6 +145,13 @@ function loadState(): IngestState {
   return null as unknown as IngestState; // signals "do not ingest this tick"
 }
 
+/**
+ * Persist watermark state atomically.
+ *
+ * Writes to a `.tmp` file first, then renames it into place so readers
+ * always see either the previous complete state or the new one — never a
+ * half-written file.
+ */
 function saveState(state: IngestState): void {
   mkdirSync(DEEPLAKE_DIR, { recursive: true });
   // Atomic write: write to a temp file first, then rename into place.
@@ -147,6 +162,14 @@ function saveState(state: IngestState): void {
   renameSync(tmp, STATE_PATH);
 }
 
+/**
+ * Append a structured entry to the loss journal on disk (best-effort).
+ *
+ * Called whenever a queue file is dropped or a transcript line cannot be
+ * enqueued. The journal is capped at `MAX_LOSS_JOURNAL_BYTES` to prevent
+ * unbounded growth; entries beyond the ceiling are silently discarded.
+ * Never throws — a failure here must not interrupt the ingest loop.
+ */
 function recordLoss(detail: Record<string, unknown>): void {
   try {
     mkdirSync(DEEPLAKE_DIR, { recursive: true });
@@ -168,6 +191,15 @@ function recordLoss(detail: Record<string, unknown>): void {
   log("kiro-ingest", `recorded queue loss: ${JSON.stringify(detail)}`);
 }
 
+/**
+ * Attempt to acquire the per-process ingest lock.
+ *
+ * Uses an exclusive `wx` open on `LOCK_PATH` so only one concurrent MCP
+ * process ingests at a time. Returns a `release` callback on success, or
+ * `null` if another process holds the lock. Stale locks (no heartbeat for
+ * `LOCK_STALE_MS`) are reclaimed automatically. The returned callback stops
+ * the heartbeat interval and removes the lock file.
+ */
 function tryAcquireLock(): (() => void) | null {
   mkdirSync(DEEPLAKE_DIR, { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -203,6 +235,10 @@ function tryAcquireLock(): (() => void) | null {
   return null;
 }
 
+/**
+ * Return `true` if there are any pending or in-flight queue files in
+ * `KIRO_QUEUE_DIR` that have not yet been drained to DeepLake.
+ */
 function hasQueuedRows(): boolean {
   try {
     return readdirSync(KIRO_QUEUE_DIR)
@@ -216,6 +252,10 @@ function hasQueuedRows(): boolean {
 // Line parsing — exported for tests
 // ---------------------------------------------------------------------------
 
+/**
+ * Type guard: return `true` when `b` is a non-null object with a `kind`
+ * property, i.e. a valid `KiroContentBlock`.
+ */
 function isBlock(b: unknown): b is KiroContentBlock {
   return !!b && typeof b === "object" && "kind" in (b as object);
 }
@@ -348,8 +388,20 @@ export function buildKiroQueueRow(
 // Idle-session summarizer
 // ---------------------------------------------------------------------------
 
+/** Callback type for spawning end-of-session work (wiki summary + skillify trigger). */
 export type SpawnSummaryFn = (sessionId: string) => void;
 
+/**
+ * Trigger end-of-session work for any Kiro transcript that has not been
+ * modified for `SUMMARY_IDLE_MS` (5 min) and has new lines since the last
+ * summary checkpoint.
+ *
+ * Spawns a wiki-worker summary and a skillify trigger for each idle session.
+ * Advances `state.summarizedLines` only after at least one task starts
+ * successfully, so a failure retries on the next idle tick rather than being
+ * silently skipped. The `spawn` parameter can be replaced in tests to avoid
+ * touching the filesystem.
+ */
 export function summarizeIdleSessions(
   config: Config,
   state: IngestState,

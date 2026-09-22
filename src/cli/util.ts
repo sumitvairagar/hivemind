@@ -216,10 +216,12 @@ const PLATFORM_MARKERS: DetectedPlatform[] = [
   { id: "kiro", markerDir: join(HOME, ".kiro") },
 ];
 
+/** Return the subset of known platforms whose marker directory exists on this machine. */
 export function detectPlatforms(): DetectedPlatform[] {
   return PLATFORM_MARKERS.filter(p => existsSync(p.markerDir));
 }
 
+/** Return the full list of all known platform IDs regardless of whether they are installed. */
 export function allPlatformIds(): PlatformId[] {
   return PLATFORM_MARKERS.map(p => p.id);
 }

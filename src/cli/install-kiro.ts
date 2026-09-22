@@ -23,6 +23,13 @@ const SERVER_KEY = "hivemind";
 
 type McpConfig = Record<string, unknown>;
 
+/**
+ * Read and parse `~/.kiro/settings/mcp.json`.
+ *
+ * Returns an empty object when the file does not exist or is empty.
+ * Throws when the file contains invalid JSON so callers can abort without
+ * modifying the user's config.
+ */
 function readConfig(): McpConfig {
   if (!existsSync(CONFIG_PATH)) return {};
   const txt = readFileSync(CONFIG_PATH, "utf-8").trim();
@@ -41,11 +48,22 @@ function readConfig(): McpConfig {
     : {};
 }
 
+/**
+ * Serialize `cfg` as pretty-printed JSON and write it to `CONFIG_PATH`.
+ * Creates `KIRO_SETTINGS_DIR` if it does not already exist.
+ */
 function writeConfig(cfg: McpConfig): void {
   ensureDir(KIRO_SETTINGS_DIR);
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + "\n");
 }
 
+/**
+ * Register the Hivemind MCP server in Kiro's settings.
+ *
+ * 1. Ensures the shared MCP server binary is present at `~/.hivemind/mcp/server.js`.
+ * 2. Merges the `hivemind` entry into `~/.kiro/settings/mcp.json`, preserving
+ *    any other servers the user has already configured (non-destructive).
+ */
 export function installKiro(): void {
   // 1. Shared stdio MCP server binary at ~/.hivemind/mcp/server.js.
   ensureMcpServerInstalled();
@@ -63,6 +81,13 @@ export function installKiro(): void {
   log(`  Kiro           config updated -> ${CONFIG_PATH} (mcpServers.${SERVER_KEY})`);
 }
 
+/**
+ * Remove the Hivemind MCP server entry from `~/.kiro/settings/mcp.json`.
+ *
+ * No-ops when the config file is absent or the `hivemind` key is not present.
+ * Leaves a malformed config file untouched rather than failing the uninstall.
+ * Deletes the file entirely when removing the entry would leave it empty.
+ */
 export function uninstallKiro(): void {
   if (!existsSync(CONFIG_PATH)) return;
   let cfg: McpConfig;
