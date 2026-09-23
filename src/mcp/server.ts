@@ -36,6 +36,11 @@ interface ServerContext {
   docsTable: string;
 }
 
+/**
+ * Load credentials and config and build a ready-to-use `ServerContext`.
+ * Returns `{ error }` when the user is not authenticated or config is invalid,
+ * so callers can return a clean error result without throwing.
+ */
 function getContext(): ServerContext | { error: string } {
   const creds = loadCredentials();
   if (!creds?.token) {
@@ -49,6 +54,7 @@ function getContext(): ServerContext | { error: string } {
   return { api, memoryTable: config.tableName, sessionsTable: config.sessionsTableName, docsTable: config.docsTableName };
 }
 
+/** Wrap a plain-text error message in the MCP tool-result envelope. */
 function errorResult(text: string): { content: Array<{ type: "text"; text: string }> } {
   return { content: [{ type: "text", text }] };
 }
@@ -235,6 +241,7 @@ server.registerTool(
   },
 );
 
+/** Entry point: connect the MCP server over stdio and start background ingest loops. */
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);

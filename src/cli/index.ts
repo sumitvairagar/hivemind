@@ -186,6 +186,7 @@ Account / org / workspace:
 Docs:  https://github.com/activeloopai/hivemind
 `.trim();
 
+/** Parse `--only=<id,id,...>` / `--only <id,...>` into a validated list of `PlatformId`s. Exits on unknown IDs. */
 function parseOnly(args: string[]): PlatformId[] | null {
   const idx = args.findIndex(a => a === "--only" || a.startsWith("--only="));
   if (idx === -1) return null;
@@ -201,10 +202,12 @@ function parseOnly(args: string[]): PlatformId[] | null {
   return ids;
 }
 
+/** Return `true` when `flag` is present in `args`. */
 function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag);
 }
 
+/** Extract the value of `--token <value>` / `--token=<value>` from `args`, or `undefined` if absent. */
 function parseToken(args: string[]): string | undefined {
   const idx = args.findIndex(a => a === "--token" || a.startsWith("--token="));
   if (idx === -1) return undefined;
@@ -225,6 +228,7 @@ function parseRef(args: string[]): string | undefined {
   return code.length > 0 ? code : undefined;
 }
 
+/** Return `true` when a `HIVEMIND_TOKEN` environment variable is set and non-empty. */
 function hasEnvToken(): boolean {
   return Boolean(process.env.HIVEMIND_TOKEN);
 }
@@ -358,6 +362,7 @@ async function runAuthGate(args: string[]): Promise<void> {
   }
 }
 
+/** Run `hivemind install` for all detected (or `--only`) platforms: auth gate, hooks, optional embeddings, session scan. */
 async function runInstallAll(args: string[]): Promise<void> {
   const only = parseOnly(args);
   const skipAuth = hasFlag(args, "--skip-auth");
@@ -453,6 +458,7 @@ async function runInstallAll(args: string[]): Promise<void> {
   log("Done. Restart each assistant to activate hooks.");
 }
 
+/** Install Hivemind for a single platform by ID. Logs and continues on error. */
 function runSingleInstall(id: PlatformId): void {
   try {
     if (id === "claude") installClaude();
@@ -468,6 +474,7 @@ function runSingleInstall(id: PlatformId): void {
   }
 }
 
+/** Uninstall Hivemind for a single platform by ID. Logs and continues on error. */
 function runSingleUninstall(id: PlatformId): void {
   try {
     if (id === "claude") uninstallClaude();
@@ -483,6 +490,7 @@ function runSingleUninstall(id: PlatformId): void {
   }
 }
 
+/** Print the current Hivemind version, login state, and detected platforms to stdout. */
 function runStatus(): void {
   const detected = detectPlatforms();
   log(`hivemind ${getVersion()}`);
@@ -493,6 +501,7 @@ function runStatus(): void {
   for (const p of detected) log(`  ${p.id.padEnd(8)} ${p.markerDir}`);
 }
 
+/** CLI entry point — parse `process.argv` and dispatch to the appropriate command handler. */
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const cmd = args[0];
